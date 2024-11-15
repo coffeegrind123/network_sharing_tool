@@ -17,54 +17,74 @@ if %errorLevel% == 0 (
 :menu
 cls
 echo ================================
-echo   WiFi to Ethernet Sharing Tool
+echo   Network Interface Sharing Tool
 echo ================================
 echo.
-echo 1. Enable Internet Sharing
-echo 2. Disable Internet Sharing
+echo Available Network Interfaces:
+echo ---------------------------
+
+:: List all network adapters and store them in an array
+set "index=0"
+for /f "skip=3 tokens=1,2,3,*" %%i in ('netsh interface show interface') do (
+    set /a "index+=1"
+    set "adapter_!index!=%%l"
+    echo !index!. %%l
+)
+set "total_adapters=!index!"
+
+echo ---------------------------
+echo.
+echo Sharing Options:
+echo 1. Share between interfaces
+echo 2. Disable All Sharing
 echo 3. Exit
 echo.
 set /p choice="Enter your choice (1-3): "
 
-if "%choice%"=="1" goto :enable
+if "%choice%"=="1" goto :share_select
 if "%choice%"=="2" goto :disable
 if "%choice%"=="3" exit /b 0
 goto :menu
 
-:enable
-:: Get network adapter names
-echo Detecting network adapters...
-
-:: List all network adapters and their status
-for /f "skip=3 tokens=1,2,3,*" %%i in ('netsh interface show interface') do (
-    if "%%l"=="Wi-Fi" (
-        set "wifi_adapter=%%l"
-        echo Found WiFi adapter: !wifi_adapter!
-    )
-    if "%%l"=="Ethernet" (
-        set "ethernet_adapter=%%l"
-        echo Found Ethernet adapter: !ethernet_adapter!
-    )
+:share_select
+cls
+echo Select source interface (sharing FROM):
+echo ---------------------------
+for /l %%i in (1,1,%total_adapters%) do (
+    echo %%i. !adapter_%%i!
 )
+echo ---------------------------
+echo.
+set /p source="Enter number of source interface: "
 
-if not defined wifi_adapter (
-    echo WiFi adapter not found!
+cls
+echo Select target interface (sharing TO):
+echo ---------------------------
+for /l %%i in (1,1,%total_adapters%) do (
+    echo %%i. !adapter_%%i!
+)
+echo ---------------------------
+echo.
+set /p target="Enter number of target interface: "
+
+if not defined adapter_%source% (
+    echo Invalid source interface selection!
+    pause
+    goto :menu
+)
+if not defined adapter_%target% (
+    echo Invalid target interface selection!
     pause
     goto :menu
 )
 
-if not defined ethernet_adapter (
-    echo Ethernet adapter not found!
-    pause
-    goto :menu
-)
-
-:: Enable sharing
+:: Enable sharing between selected interfaces
 echo.
 echo Configuring Internet Connection Sharing...
+echo FROM: !adapter_%source%! TO: !adapter_%target%!
 
 :: Use PowerShell to set up ICS
-powershell -Command "$wifi='%wifi_adapter%'; $eth='%ethernet_adapter%'; $netsharing = New-Object -ComObject HNetCfg.HNetShare; $connections = @($netsharing.EnumEveryConnection | ForEach-Object { $props = $netsharing.NetConnectionProps.Invoke($_); $config = $netsharing.INetSharingConfigurationForINetConnection.Invoke($_); [PSCustomObject]@{ Name = $props.Name; Connection = $_; Config = $config } }); $wifiConn = $connections | Where-Object { $_.Name -eq $wifi }; $ethConn = $connections | Where-Object { $_.Name -eq $eth }; if ($wifiConn) { $wifiConn.Config.EnableSharing(0) } else { Write-Host 'WiFi adapter not found in sharing configuration' }; if ($ethConn) { $ethConn.Config.EnableSharing(1) } else { Write-Host 'Ethernet adapter not found in sharing configuration' }"
+powershell -Command "$source='!adapter_%source%!'; $target='!adapter_%target%!'; $netsharing = New-Object -ComObject HNetCfg.HNetShare; $connections = @($netsharing.EnumEveryConnection | ForEach-Object { $props = $netsharing.NetConnectionProps.Invoke($_); $config = $netsharing.INetSharingConfigurationForINetConnection.Invoke($_); [PSCustomObject]@{ Name = $props.Name; Connection = $_; Config = $config } }); $sourceConn = $connections | Where-Object { $_.Name -eq $source }; $targetConn = $connections | Where-Object { $_.Name -eq $target }; if ($sourceConn) { $sourceConn.Config.EnableSharing(0) } else { Write-Host 'Source adapter not found in sharing configuration' }; if ($targetConn) { $targetConn.Config.EnableSharing(1) } else { Write-Host 'Target adapter not found in sharing configuration' }"
 
 echo.
 echo Configuration complete. Please wait a moment for the changes to take effect...
